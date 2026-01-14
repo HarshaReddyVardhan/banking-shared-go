@@ -9,6 +9,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+var (
+	// Regex patterns compiled once for performance
+	digitsOnlyRegex    = regexp.MustCompile(`^\d+$`)
+	routingNumberRegex = regexp.MustCompile(`^\d{9}$`)
+	emailRegex         = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	upperRegex         = regexp.MustCompile(`[A-Z]`)
+	lowerRegex         = regexp.MustCompile(`[a-z]`)
+	digitRegex         = regexp.MustCompile(`\d`)
+	specialRegex       = regexp.MustCompile(`[!@#$%^&*(),.?":{}|<>]`)
+)
+
 // ValidationError represents a validation failure
 type ValidationError struct {
 	Field   string `json:"field"`
@@ -22,7 +33,8 @@ func (e ValidationError) Error() string {
 // MaxTransferAmount is the default maximum transfer limit
 var MaxTransferAmount = decimal.NewFromInt(1000000)
 
-// ValidateTransferAmount validates a transfer amount
+// ValidateTransferAmount validates a transfer amount.
+// It checks if the amount is positive, within limit, and has correct scale.
 func ValidateTransferAmount(amount decimal.Decimal) error {
 	if amount.LessThanOrEqual(decimal.Zero) {
 		return ValidationError{Field: "amount", Message: "Amount must be greater than zero"}
@@ -37,20 +49,21 @@ func ValidateTransferAmount(amount decimal.Decimal) error {
 	return nil
 }
 
-// ValidateAccountNumber validates a bank account number
+// ValidateAccountNumber validates a bank account number.
+// Must be 8-12 digits.
 func ValidateAccountNumber(accountNumber string) error {
 	if len(accountNumber) < 8 || len(accountNumber) > 12 {
 		return ValidationError{Field: "account_number", Message: "Account number must be between 8 and 12 digits"}
 	}
-	if !regexp.MustCompile(`^\d+$`).MatchString(accountNumber) {
+	if !digitsOnlyRegex.MatchString(accountNumber) {
 		return ValidationError{Field: "account_number", Message: "Account number must contain only digits"}
 	}
 	return nil
 }
 
-// ValidateRoutingNumber validates a US ABA routing number (9 digits with checksum)
+// ValidateRoutingNumber validates a US ABA routing number (9 digits with checksum).
 func ValidateRoutingNumber(routingNumber string) error {
-	if !regexp.MustCompile(`^\d{9}$`).MatchString(routingNumber) {
+	if !routingNumberRegex.MatchString(routingNumber) {
 		return ValidationError{Field: "routing_number", Message: "Routing number must be exactly 9 digits"}
 	}
 
@@ -70,21 +83,21 @@ func ValidateRoutingNumber(routingNumber string) error {
 	return nil
 }
 
-// ValidateEmail validates an email address
+// ValidateEmail validates an email address using a regex.
 func ValidateEmail(email string) error {
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" {
 		return ValidationError{Field: "email", Message: "Email is required"}
 	}
-	// Basic email regex - for production use a more comprehensive validator
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
 	if !emailRegex.MatchString(email) {
 		return ValidationError{Field: "email", Message: "Invalid email format"}
 	}
 	return nil
 }
 
-// ValidatePassword validates password strength
+// ValidatePassword validates password strength.
+// Must be 12-128 chars, containing upper, lower, digit, and special chars.
 func ValidatePassword(password string) error {
 	if len(password) < 12 {
 		return ValidationError{Field: "password", Message: "Password must be at least 12 characters"}
@@ -93,12 +106,10 @@ func ValidatePassword(password string) error {
 		return ValidationError{Field: "password", Message: "Password must be at most 128 characters"}
 	}
 
-	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
-	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
-	hasDigit := regexp.MustCompile(`\d`).MatchString(password)
-	hasSpecial := regexp.MustCompile(`[!@#$%^&*(),.?":{}|<>]`).MatchString(password)
-
-	if !hasUpper || !hasLower || !hasDigit || !hasSpecial {
+	if !upperRegex.MatchString(password) ||
+		!lowerRegex.MatchString(password) ||
+		!digitRegex.MatchString(password) ||
+		!specialRegex.MatchString(password) {
 		return ValidationError{
 			Field:   "password",
 			Message: "Password must contain uppercase, lowercase, digit, and special character",
@@ -107,7 +118,7 @@ func ValidatePassword(password string) error {
 	return nil
 }
 
-// SanitizeInput removes potentially dangerous characters from user input
+// SanitizeInput removes control characters and trims whitespace.
 func SanitizeInput(input string) string {
 	// Remove null bytes and other control characters
 	sanitized := strings.Map(func(r rune) rune {
